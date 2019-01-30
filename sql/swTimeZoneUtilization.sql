@@ -4,62 +4,78 @@
 --PACIFIC = (CAST(DateTime as TIME) BETWEEN '09:00' and '21:00')
 --ALASKA = (CAST(DateTime as TIME) BETWEEN '10:00' and '22:00')
 --HAWAII = (CAST(DateTime as TIME) BETWEEN '12:00' and '23:59')
-
 --Last Week (not last 7 days)
-declare @lastsunday datetime
-set @lastsunday = dateadd(wk, datediff(wk, 0, getdate()) - 1, 0)
-declare @lastsaturday datetime
-set @lastsaturday = dateadd(wk, datediff(wk, 0, getdate()) -1, 7)
+DECLARE @lastsunday DATETIME
 
-select
-	x.device
+SET @lastsunday = dateadd(wk, datediff(wk, 0, getdate()) - 1, 0)
+
+DECLARE @lastsaturday DATETIME
+
+SET @lastsaturday = dateadd(wk, datediff(wk, 0, getdate()) - 1, 7)
+
+SELECT x.device
 	,x.interface
 	,x.jobsite
 	,x.usercount
 	,x.avgrcv
 	,x.avgxmt
 	,x.totalavg
-	,case when x.usercount = '0' then '0'
-		else cast((x.TotalAvg/x.UserCount) as decimal (9,2))
-	end as perUser
-from
-(select
-    n.caption as 'Device',
-    i.caption as 'Interface',
-	n.jobsite,
-	n.usercount,
-    case
-        when i.inbandwidth = 0 then 0
-        else cast((tr.avg_in/i.inbandwidth)*100 as decimal(9,2))
-    end as 'AvgRCV',
-    case
-        when i.outbandwidth = 0 then 0
-        else cast((tr.avg_out/i.outbandwidth)*100 as decimal(9,2))
-    end as 'AvgXMT',
-	((tr.avg_in + tr.avg_out)/(i.inbandwidth + i.outbandwidth))*100 as 'TotalAvg'
-from interfaces i
-join nodes n on n.nodeid=i.nodeid
-join    
-(
-select 
-    interfaceid,
-    avg(in_averagebps) as avg_in,
-    avg(out_averagebps) as avg_out
-from interfacetraffic_detail
-where (in_averagebps is not null and out_averagebps is not null)
-and
-(
-    (datetime >= @lastsunday and datetime < @lastsaturday) --last week
-     and  
-    (
-        (datepart(weekday, datetime) <> 1) and -- 1 represents sunday
-        (datepart(weekday, datetime) <> 7) and -- 7 represents saturday
-         --This is your time zone offset from EST
-        (CAST(DateTime as TIME) BETWEEN '06:00' and '18:00') 
-    )
-)
-group by interfaceid) as tr on tr.interfaceid=i.interfaceid
-where i.outsideinterface = 1
-and (i.InBandwidth <> '0' and i.OutBandwidth <> '0')
-and n.region = 'AMER'
-and n.TimeZone = 'EASTERN') x
+	,CASE 
+		WHEN x.usercount = '0'
+			THEN '0'
+		ELSE cast((x.TotalAvg / x.UserCount) AS DECIMAL(9, 2))
+		END AS perUser
+FROM (
+	SELECT n.caption AS 'Device'
+		,i.caption AS 'Interface'
+		,n.jobsite
+		,n.usercount
+		,CASE 
+			WHEN i.inbandwidth = 0
+				THEN 0
+			ELSE cast((tr.avg_in / i.inbandwidth) * 100 AS DECIMAL(9, 2))
+			END AS 'AvgRCV'
+		,CASE 
+			WHEN i.outbandwidth = 0
+				THEN 0
+			ELSE cast((tr.avg_out / i.outbandwidth) * 100 AS DECIMAL(9, 2))
+			END AS 'AvgXMT'
+		,((tr.avg_in + tr.avg_out) / (i.inbandwidth + i.outbandwidth)) * 100 AS 'TotalAvg'
+	FROM interfaces i
+	JOIN nodes n ON n.nodeid = i.nodeid
+	JOIN (
+		SELECT interfaceid
+			,avg(in_averagebps) AS avg_in
+			,avg(out_averagebps) AS avg_out
+		FROM interfacetraffic_detail
+		WHERE (
+				in_averagebps IS NOT NULL
+				AND out_averagebps IS NOT NULL
+				)
+			AND (
+				(
+					DATETIME >= @lastsunday
+					AND DATETIME < @lastsaturday
+					) --last week
+				AND (
+					(datepart(weekday, DATETIME) <> 1)
+					AND -- 1 represents sunday
+					(datepart(weekday, DATETIME) <> 7)
+					AND -- 7 represents saturday
+					--This is your time zone offset from EST
+					(
+						CAST(DATETIME AS TIME) BETWEEN '06:00'
+							AND '18:00'
+						)
+					)
+				)
+		GROUP BY interfaceid
+		) AS tr ON tr.interfaceid = i.interfaceid
+	WHERE i.outsideinterface = 1
+		AND (
+			i.InBandwidth <> '0'
+			AND i.OutBandwidth <> '0'
+			)
+		AND n.region = 'AMER'
+		AND n.TimeZone = 'EASTERN'
+	) x

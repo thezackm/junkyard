@@ -11,69 +11,103 @@
 ** --   -----------   -------        ------------------------------------
 ** 1    08/10/2015    Zach Mutchler  Initial development.
 *******************************/
-
-select
-n.market as 'Market' --custom property
-,n.businessname as 'Business Name' --custom property
-,n.caption as 'Device'
-,i.caption as 'Interface'
---give our hour dateparts meaning...
-,case
-	when x.hour = 0 then '12:00am - 12:59am'
-	when x.hour = 1 then '1:00am - 1:59am'
-	when x.hour = 2 then '2:00am - 2:59am'
-	when x.hour = 3 then '3:00am - 3:59am'
-	when x.hour = 4 then '4:00am - 4:59am'
-	when x.hour = 5 then '5:00am - 5:59am'
-	when x.hour = 6 then '6:00am - 6:59am'
-	when x.hour = 7 then '7:00am - 7:59am'
-	when x.hour = 8 then '8:00am - 8:59am'
-	when x.hour = 9 then '9:00am - 9:59am'
-	when x.hour = 10 then '10:00am - 10:59am'
-	when x.hour = 11 then '11:00am - 11:59am'
-	when x.hour = 12 then '12:00pm - 12:59pm'
-	when x.hour = 13 then '1:00pm - 1:59pm'
-	when x.hour = 14 then '2:00pm - 2:59pm'
-	when x.hour = 15 then '3:00pm - 3:59pm'
-	when x.hour = 16 then '4:00pm - 4:59pm'
-	when x.hour = 17 then '5:00pm - 5:59pm'
-	when x.hour = 18 then '6:00pm - 6:59pm'
-	when x.hour = 19 then '7:00pm - 7:59pm'
-	when x.hour = 20 then '8:00pm - 8:59pm'
-	when x.hour = 21 then '9:00pm - 9:59pm'
-	when x.hour = 22 then '10:00pm - 10:59pm'
-	when x.hour = 23 then '11:00pm - 11:59pm'
-end as 'Hour Block'
---calculate the % utilization based on max BPS and bandwidth (outbandwidth = XMT, inbandwidth = RCV)
-,cast(cast((x.peak/i.outbandwidth)*100 as decimal (9,2)) as nvarchar(10)) + '%' as 'Peak Transmit Utilization'
-from interfaces i
-join nodes n on n.nodeid = i.nodeid
-join
---this is a derived table that breaks out our utilization metrics into the hour datepart and ranks them per interfaceid
-	(select 
-		interfaceid
-		,datepart(hour, datetime) as 'hour'
+SELECT n.market AS 'Market' --custom property
+	,n.businessname AS 'Business Name' --custom property
+	,n.caption AS 'Device'
+	,i.caption AS 'Interface'
+	--give our hour dateparts meaning...
+	,CASE 
+		WHEN x.hour = 0
+			THEN '12:00am - 12:59am'
+		WHEN x.hour = 1
+			THEN '1:00am - 1:59am'
+		WHEN x.hour = 2
+			THEN '2:00am - 2:59am'
+		WHEN x.hour = 3
+			THEN '3:00am - 3:59am'
+		WHEN x.hour = 4
+			THEN '4:00am - 4:59am'
+		WHEN x.hour = 5
+			THEN '5:00am - 5:59am'
+		WHEN x.hour = 6
+			THEN '6:00am - 6:59am'
+		WHEN x.hour = 7
+			THEN '7:00am - 7:59am'
+		WHEN x.hour = 8
+			THEN '8:00am - 8:59am'
+		WHEN x.hour = 9
+			THEN '9:00am - 9:59am'
+		WHEN x.hour = 10
+			THEN '10:00am - 10:59am'
+		WHEN x.hour = 11
+			THEN '11:00am - 11:59am'
+		WHEN x.hour = 12
+			THEN '12:00pm - 12:59pm'
+		WHEN x.hour = 13
+			THEN '1:00pm - 1:59pm'
+		WHEN x.hour = 14
+			THEN '2:00pm - 2:59pm'
+		WHEN x.hour = 15
+			THEN '3:00pm - 3:59pm'
+		WHEN x.hour = 16
+			THEN '4:00pm - 4:59pm'
+		WHEN x.hour = 17
+			THEN '5:00pm - 5:59pm'
+		WHEN x.hour = 18
+			THEN '6:00pm - 6:59pm'
+		WHEN x.hour = 19
+			THEN '7:00pm - 7:59pm'
+		WHEN x.hour = 20
+			THEN '8:00pm - 8:59pm'
+		WHEN x.hour = 21
+			THEN '9:00pm - 9:59pm'
+		WHEN x.hour = 22
+			THEN '10:00pm - 10:59pm'
+		WHEN x.hour = 23
+			THEN '11:00pm - 11:59pm'
+		END AS 'Hour Block'
+	--calculate the % utilization based on max BPS and bandwidth (outbandwidth = XMT, inbandwidth = RCV)
+	,cast(cast((x.peak / i.outbandwidth) * 100 AS DECIMAL(9, 2)) AS NVARCHAR(10)) + '%' AS 'Peak Transmit Utilization'
+FROM interfaces i
+JOIN nodes n ON n.nodeid = i.nodeid
+JOIN
+	--this is a derived table that breaks out our utilization metrics into the hour datepart and ranks them per interfaceid
+	(
+	SELECT interfaceid
+		,datepart(hour, DATETIME) AS 'hour'
 		--this is for XMT (RCV would be in_maxbps)
-		,max(out_maxbps) as 'peak'
+		,max(out_maxbps) AS 'peak'
 		--rank out results per interfaceid by the out_maxbps value, descending (or in_maxbps for the RCV side)
-		,rank() over(partition by interfaceid order by max(out_maxbps) desc) as 'ranking'
-	from interfacetraffic
+		,rank() OVER (
+			PARTITION BY interfaceid ORDER BY max(out_maxbps) DESC
+			) AS 'ranking'
+	FROM interfacetraffic
 	--this subquery limits our results to interesting interfaces
-	where interfaceid in 
-		(select i.interfaceid 
-		from interfaces i 
-		join nodes n on n.nodeid = i.nodeid 
-		--This is where you add your limitations to the selected interfaces
-		where i.interfaceusage = 'mpls' --custom property 
-		and n.corpdivision = 'cmg' --custom property
-		and n.caption not like '%csr%')
-	-- limit our results to the last 1 day
-	and datetime > (getdate()-1)
-	group by interfaceid, datepart(hour, datetime)
-	) x on x.interfaceid = i.interfaceid
+	WHERE interfaceid IN (
+			SELECT i.interfaceid
+			FROM interfaces i
+			JOIN nodes n ON n.nodeid = i.nodeid
+			--This is where you add your limitations to the selected interfaces
+			WHERE i.interfaceusage = 'mpls' --custom property 
+				AND n.corpdivision = 'cmg' --custom property
+				AND n.caption NOT LIKE '%csr%'
+			)
+		-- limit our results to the last 1 day
+		AND DATETIME > (getdate() - 1)
+	GROUP BY interfaceid
+		,datepart(hour, DATETIME)
+	) x ON x.interfaceid = i.interfaceid
 --return the top ranked (peak) per interfaceid
-where x.ranking = 1
-group by n.market, n.businessname, n.caption, i.caption, x.hour, x.peak, i.outbandwidth
+WHERE x.ranking = 1
+GROUP BY n.market
+	,n.businessname
+	,n.caption
+	,i.caption
+	,x.hour
+	,x.peak
+	,i.outbandwidth
 --ignore all interfaces with 0% peak utilization
-having cast((x.peak/i.outbandwidth)*100 as decimal (9,2)) > 0
-order by n.market, n.caption, i.caption
+HAVING cast((x.peak / i.outbandwidth) * 100 AS DECIMAL(9, 2)) > 0
+ORDER BY n.market
+	,n.caption
+	,i.caption
